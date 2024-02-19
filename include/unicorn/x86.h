@@ -33,6 +33,16 @@ typedef struct uc_x86_msr {
 // @user_data: user data passed to tracing APIs.
 typedef void (*uc_cb_insn_syscall_t)(struct uc_struct *uc, void *user_data);
 
+// Callback function for intercepting instructions (for uc_hook_intr())
+// CPUID, HLT, RDTSC, RDTSCP
+// @address: current instruction address.
+// @user_data: user data passed to tracing APIs.
+//
+// @return: true indicates the callback handled the instruction while
+// false
+//          indicates instruction will still be executed.
+typedef bool (*uc_cb_insn_hook_t)(struct uc_struct *uc, uintptr_t address, void *user_data);
+
 //> X86 registers
 typedef enum uc_x86_reg {
 	UC_X86_REG_INVALID = 0,

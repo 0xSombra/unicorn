@@ -1500,7 +1500,12 @@ static bool x86_insn_hook_validate(uint32_t insn_enum)
     if (insn_enum != UC_X86_INS_IN
         &&  insn_enum != UC_X86_INS_OUT
         &&  insn_enum != UC_X86_INS_SYSCALL
-        &&  insn_enum != UC_X86_INS_SYSENTER) {
+        &&  insn_enum != UC_X86_INS_SYSENTER
+        // uc_cb_insn_hook_t:
+        &&  insn_enum != UC_X86_INS_CPUID
+        &&  insn_enum != UC_X86_INS_HLT
+        &&  insn_enum != UC_X86_INS_RDTSC
+        &&  insn_enum != UC_X86_INS_RDTSCP) {
         return false;
     }
     return true;

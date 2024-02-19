@@ -75,16 +75,37 @@ void helper_single_step(CPUX86State *env)
 
 void helper_cpuid(CPUX86State *env)
 {
-    uint32_t eax, ebx, ecx, edx;
+    bool skip_insn = false;
+    struct hook* hook;
 
     cpu_svm_check_intercept_param(env, SVM_EXIT_CPUID, 0);
 
-    cpu_x86_cpuid(env, (uint32_t)env->regs[R_EAX], (uint32_t)env->regs[R_ECX],
-                  &eax, &ebx, &ecx, &edx);
-    env->regs[R_EAX] = eax;
-    env->regs[R_EBX] = ebx;
-    env->regs[R_ECX] = ecx;
-    env->regs[R_EDX] = edx;
+    // Unicorn: call registered CPUID hooks
+    HOOK_FOREACH_VAR_DECLARE;
+    HOOK_FOREACH(env->uc, hook, UC_HOOK_INSN) {
+        if (hook->to_delete)
+            continue;
+        if (!HOOK_BOUND_CHECK(hook, env->eip))
+            continue;
+
+        if (hook->insn == UC_X86_INS_CPUID)
+            skip_insn = ((uc_cb_insn_hook_t)hook->callback)(env->uc, env->eip, hook->user_data);
+
+        // the last callback may already asked to stop emulation
+        if (env->uc->stop_request)
+            break;
+    }
+
+    if (!skip_insn)
+    {
+        uint32_t eax, ebx, ecx, edx;
+        cpu_x86_cpuid(env, (uint32_t)env->regs[R_EAX], (uint32_t)env->regs[R_ECX],
+                    &eax, &ebx, &ecx, &edx);
+        env->regs[R_EAX] = eax;
+        env->regs[R_EBX] = ebx;
+        env->regs[R_ECX] = ecx;
+        env->regs[R_EDX] = edx;
+    }
 }
 
 #if defined(CONFIG_USER_ONLY)
@@ -186,22 +207,71 @@ void helper_invlpg(CPUX86State *env, target_ulong addr)
 
 void helper_rdtsc(CPUX86State *env)
 {
-    uint64_t val;
+    bool skip_insn = 0;
+    struct hook* hook;
 
     if ((env->cr[4] & CR4_TSD_MASK) && ((env->hflags & HF_CPL_MASK) != 0)) {
         raise_exception(env, EXCP0D_GPF);
     }
     cpu_svm_check_intercept_param(env, SVM_EXIT_RDTSC, 0);
 
-    val = cpu_get_tsc(env) + env->tsc_offset;
-    env->regs[R_EAX] = (uint32_t)(val);
-    env->regs[R_EDX] = (uint32_t)(val >> 32);
+    // Unicorn: call registered RDTSC hooks
+    HOOK_FOREACH_VAR_DECLARE;
+    HOOK_FOREACH(env->uc, hook, UC_HOOK_INSN) {
+        if (hook->to_delete)
+            continue;
+        if (!HOOK_BOUND_CHECK(hook, env->eip))
+            continue;
+
+        if (hook->insn == UC_X86_INS_RDTSC)
+            skip_insn = ((uc_cb_insn_hook_t)hook->callback)(env->uc, env->eip, hook->user_data);
+
+        // the last callback may already asked to stop emulation
+        if (env->uc->stop_request)
+            break;
+    }
+
+    if (!skip_insn)
+    {
+        uint64_t val = cpu_get_tsc(env) + env->tsc_offset;
+        env->regs[R_EAX] = (uint32_t)(val);
+        env->regs[R_EDX] = (uint32_t)(val >> 32);
+    }
 }
 
 void helper_rdtscp(CPUX86State *env)
 {
-    helper_rdtsc(env);
-    env->regs[R_ECX] = (uint32_t)(env->tsc_aux);
+    bool skip_insn = 0;
+    struct hook* hook;
+
+    if ((env->cr[4] & CR4_TSD_MASK) && ((env->hflags & HF_CPL_MASK) != 0)) {
+        raise_exception(env, EXCP0D_GPF);
+    }
+    cpu_svm_check_intercept_param(env, SVM_EXIT_RDTSC, 0);
+
+    // Unicorn: call registered RDTSCP hooks
+    HOOK_FOREACH_VAR_DECLARE;
+    HOOK_FOREACH(env->uc, hook, UC_HOOK_INSN) {
+        if (hook->to_delete)
+            continue;
+        if (!HOOK_BOUND_CHECK(hook, env->eip))
+            continue;
+
+        if (hook->insn == UC_X86_INS_RDTSCP)
+            skip_insn = ((uc_cb_insn_hook_t)hook->callback)(env->uc, env->eip, hook->user_data);
+
+        // the last callback may already asked to stop emulation
+        if (env->uc->stop_request)
+            break;
+    }
+
+    if (!skip_insn)
+    {
+        uint64_t val = cpu_get_tsc(env) + env->tsc_offset;
+        env->regs[R_EAX] = (uint32_t)(val);
+        env->regs[R_EDX] = (uint32_t)(val >> 32);
+        env->regs[R_ECX] = (uint32_t)(env->tsc_aux);
+    }
 }
 
 void helper_rdpmc(CPUX86State *env)
@@ -547,12 +617,33 @@ static void do_hlt(X86CPU *cpu)
 
 void helper_hlt(CPUX86State *env, int next_eip_addend)
 {
-    X86CPU *cpu = x86_env_get_cpu(env);
+    bool skip_insn = 0;
+    struct hook* hook;
 
     cpu_svm_check_intercept_param(env, SVM_EXIT_HLT, 0);
-    env->eip += next_eip_addend;
 
-    do_hlt(cpu);
+    // Unicorn: call registered HLT hooks
+    HOOK_FOREACH_VAR_DECLARE;
+    HOOK_FOREACH(env->uc, hook, UC_HOOK_INSN) {
+        if (hook->to_delete)
+            continue;
+        if (!HOOK_BOUND_CHECK(hook, env->eip))
+            continue;
+
+        if (hook->insn == UC_X86_INS_HLT)
+            skip_insn = ((uc_cb_insn_hook_t)hook->callback)(env->uc, env->eip, hook->user_data);
+
+        // the last callback may already asked to stop emulation
+        if (env->uc->stop_request)
+            break;
+    }
+
+    if (!skip_insn)
+    {
+        X86CPU* cpu = x86_env_get_cpu(env);
+        env->eip += next_eip_addend;
+        do_hlt(cpu);
+    }
 }
 
 void helper_monitor(CPUX86State *env, target_ulong ptr)
